@@ -1,5 +1,5 @@
 import {StyleSheet, Text, View, TextInput, Button, Alert} from 'react-native';
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import './shim';
 import * as Bitcoin from 'react-native-bitcoinjs-lib';
 import {randomBytes} from 'react-native-randombytes';
@@ -7,6 +7,8 @@ import * as bip39 from 'bip39';
 import BIP32Factory from 'bip32';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import ECPairFactory from 'ecpair';
+import axios from 'axios';
+import TransactionList from './TransactionList';
 const network = Bitcoin.networks.testnet;
 
 const bip32 = BIP32Factory(ecc);
@@ -19,6 +21,7 @@ const App = () => {
   const [recipientAddress, setRecipientAddress] = useState('');
   const [amount, setAmount] = useState('');
   const [balance, setBalance] = useState(0);
+  const [transactions, setTransactions] = useState([]);
 
   const createNewWallet = async () => {
     try {
@@ -102,27 +105,97 @@ const App = () => {
   };
 
   // Create and sign transaction
+  // const createTransaction = async () => {
+  //   try {
+  //     if (!wallet) throw new Error('No wallet loaded');
+
+  //     const network = Bitcoin.networks.bitcoin;
+  //     const txb = new Bitcoin.TransactionBuilder(network);
+
+  //     // This is where you'd normally fetch UTXOs and add inputs
+  //     // For demo purposes, we'll just create a basic transaction structure
+  //     txb.addInput('prevTxId', 0); // Replace with actual UTXO
+
+  //     const satoshis = Math.floor(parseFloat(amount) * 100000000);
+  //     txb.addOutput(recipientAddress, satoshis);
+
+  //     // Sign the transaction
+  //     txb.sign(0, wallet);
+
+  //     return txb.build().toHex();
+  //   } catch (error) {
+  //     Alert.alert('Error', error.message);
+  //     return null;
+  //   }
+  // };
+
+  const fetchBalance = async (address) => {
+    try {
+      const response = await axios.get(`https://mempool.space/testnet4/api/address/${address}`);
+      console.log('Balance response:', response.data);
+      const { funded_txo_sum, spent_txo_sum } = response.data.chain_stats;
+      const balance = ( funded_txo_sum - spent_txo_sum ) / 100000000;
+      console.log('Balance:', balance);
+      setBalance(balance);
+    } catch (error) {
+      console.error('Error fetching balance:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (address) {
+      fetchBalance(address);
+      fetchTransactions(address);
+    }
+  }, [address]);
+
+
+  const fetchTransactions = async (address) => {
+    try {
+      const response = await axios.get(`https://mempool.space/testnet4/api/address/${address}/txs`);
+      console.log('Transactions response:', response.data);
+      setTransactions(response.data);
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+    }
+  };
+
+
   const createTransaction = async () => {
     try {
-      if (!wallet) throw new Error('No wallet loaded');
-
-      const network = Bitcoin.networks.bitcoin;
+      const utxosResponse = await axios.get(`https://blockstream.info/testnet/api/address/${address}/utxo`);
+      const utxos = utxosResponse.data;
+      console.log('utxos:', utxos);
       const txb = new Bitcoin.TransactionBuilder(network);
+      let inputSum = 0;
+      
+      // Add inputs
+      utxos.forEach(utxo => {
+        txb.addInput(utxo.txid, utxo.vout);
+        inputSum += utxo.value;
+      });
+      console.log('txb:', txb);
 
-      // This is where you'd normally fetch UTXOs and add inputs
-      // For demo purposes, we'll just create a basic transaction structure
-      txb.addInput('prevTxId', 0); // Replace with actual UTXO
+      // Add output
+      const amountInSatoshis = Math.floor(parseFloat(amount) * 1e8);
+      const fee = 1000; // Set a fixed fee for simplicity
+      txb.addOutput(recipientAddress, amountInSatoshis);
+      txb.addOutput(address, inputSum - amountInSatoshis - fee); // Change address
 
-      const satoshis = Math.floor(parseFloat(amount) * 100000000);
-      txb.addOutput(recipientAddress, satoshis);
+      // Sign inputs
+      utxos.forEach((utxo, index) => {
+        txb.sign(index, wallet);
+      });
 
-      // Sign the transaction
-      txb.sign(0, wallet);
+      const rawTx = txb.build().toHex();
 
-      return txb.build().toHex();
+      // Broadcast transaction
+      // await axios.post('https://blockstream.info/testnet/api/tx', rawTx);
+
+      Alert.alert('Success', 'Transaction sent successfully');
     } catch (error) {
+      console.error('Error creating transaction:', error);
       Alert.alert('Error', error.message);
-      return null;
     }
   };
 
@@ -140,6 +213,10 @@ const App = () => {
 
       {address && (
         <TextInput style={styles.address} >Receiving Address: {address}</TextInput>
+      )}
+
+      {address && (
+        <Text style={styles.address}>Balance: {balance} BTC</Text>
       )}
 
       <TextInput
@@ -162,6 +239,13 @@ const App = () => {
         onPress={createTransaction}
         disabled={!wallet}
       />
+
+      {address && (
+        <>
+        <Text style={styles.address}>Transactions: {transactions?.length}</Text>
+        <TransactionList  transactions={transactions} />
+        </>
+      )}
     </View>
   );
 };
@@ -190,3 +274,6 @@ export default App;
 
 // mi9jvrXp7uL1MymrNYLaErLJz1RJ5EUk6w
 // mi9jvrXp7uL1MymrNYLaErLJz1RJ5EUk6w
+
+
+// depart attitude liquid pledge enrich into sausage canvas frozen glass anger hybrid
