@@ -36,6 +36,8 @@ const App = () => {
       console.log('root:', root);
       const child = root.derivePath("m/44'/0'/0'/0/0");
       console.log('child:', child);
+      console.log('Private Key:', child.privateKey.toString('hex'));
+      console.log('Public Key:', child.publicKey.toString('hex'));
       const keyPair = ECPair.fromPrivateKey(child.privateKey);
       console.log('keyPair:', keyPair);
 
@@ -64,24 +66,37 @@ const App = () => {
 
   // Import existing wallet
   const importWallet = async seedPhrase => {
+    console.log('seedPhrase:', seedPhrase);
     try {
-      if (!Bitcoin.bip39.validateMnemonic(seedPhrase)) {
+      // Fix the validation logic - we were throwing on valid mnemonics
+      if (!bip39.validateMnemonic(seedPhrase)) {
         throw new Error('Invalid mnemonic');
       }
 
-      const seed = await Bitcoin.bip39.mnemonicToSeed(seedPhrase);
-      const root = Bitcoin.bip32.fromSeed(seed);
+      const seed = await bip39.mnemonicToSeed(seedPhrase);
+      const root = bip32.fromSeed(seed);
       const child = root.derivePath("m/44'/0'/0'/0/0");
-      const keyPair = Bitcoin.ECPair.fromPrivateKey(child.privateKey);
+      const keyPair = ECPair.fromPrivateKey(child.privateKey);
 
       setWallet(keyPair);
       setMnemonic(seedPhrase);
 
-      const {address} = Bitcoin.payments.p2pkh({pubkey: keyPair.publicKey});
+      // Generate address using same method as createNewWallet
+      const pubKeyHash = Bitcoin.crypto.hash160(keyPair.publicKey);
+      const scriptPubKey = Bitcoin.script.compile([
+        Bitcoin.opcodes.OP_DUP,
+        Bitcoin.opcodes.OP_HASH160,
+        pubKeyHash,
+        Bitcoin.opcodes.OP_EQUALVERIFY,
+        Bitcoin.opcodes.OP_CHECKSIG,
+      ]);
+
+      const address = Bitcoin.address.fromOutputScript(scriptPubKey, network);
       setAddress(address);
 
-      Alert.alert('Success', 'Wallet imported!');
+      Alert.alert('Success', 'Wallet imported successfully');
     } catch (error) {
+      console.error('Import wallet error:', error);
       Alert.alert('Error', error.message);
     }
   };
