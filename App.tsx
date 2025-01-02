@@ -7,7 +7,7 @@ import * as bip39 from 'bip39';
 import BIP32Factory from 'bip32';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import ECPairFactory from 'ecpair';
-const network = Bitcoin.networks.bitcoin;
+const network = Bitcoin.networks.testnet;
 
 const bip32 = BIP32Factory(ecc);
 const ECPair = ECPairFactory(ecc);
@@ -34,7 +34,7 @@ const App = () => {
       // Create Bitcoin wallet
       const root = bip32.fromSeed(Buffer.from(seed));
       console.log('root:', root);
-      const child = root.derivePath("m/44'/0'/0'/0/0");
+      const child = root.derivePath("m/44'/1'/0'/0/0");
       console.log('child:', child);
       console.log('Private Key:', child.privateKey.toString('hex'));
       console.log('Public Key:', child.publicKey.toString('hex'));
@@ -139,7 +139,7 @@ const App = () => {
       <Button title="Import Wallet" onPress={() => importWallet(mnemonic)} />
 
       {address && (
-        <Text style={styles.address}>Receiving Address: {address}</Text>
+        <TextInput style={styles.address} >Receiving Address: {address}</TextInput>
       )}
 
       <TextInput
@@ -168,6 +168,7 @@ const App = () => {
 
 const styles = StyleSheet.create({
   container: {
+    marginTop: 100,
     flex: 1,
     padding: 20,
   },
@@ -176,12 +177,16 @@ const styles = StyleSheet.create({
     borderColor: '#ccc',
     padding: 10,
     marginVertical: 10,
-    color: 'white',
+    color: 'black',
   },
   address: {
     marginVertical: 10,
-    color: 'white',
+    color: 'black',
   },
 });
 
 export default App;
+
+
+// mi9jvrXp7uL1MymrNYLaErLJz1RJ5EUk6w
+// mi9jvrXp7uL1MymrNYLaErLJz1RJ5EUk6w
