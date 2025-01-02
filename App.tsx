@@ -4,6 +4,13 @@ import './shim';
 import * as Bitcoin from 'react-native-bitcoinjs-lib';
 import {randomBytes} from 'react-native-randombytes';
 import * as bip39 from 'bip39';
+import BIP32Factory from 'bip32';
+import * as ecc from '@bitcoinerlab/secp256k1';
+import ECPairFactory from 'ecpair';
+const network = Bitcoin.networks.bitcoin;
+
+const bip32 = BIP32Factory(ecc);
+const ECPair = ECPairFactory(ecc);
 
 const App = () => {
   const [wallet, setWallet] = useState(null);
@@ -13,44 +20,42 @@ const App = () => {
   const [amount, setAmount] = useState('');
   const [balance, setBalance] = useState(0);
 
-  // Create new wallet
   const createNewWallet = async () => {
     try {
-      // Generate random bytes
       const entropy = randomBytes(16);
       console.log('entropy:', entropy);
-
-      // Convert entropy buffer to hex string
       const entropyHex = Buffer.from(entropy).toString('hex');
       console.log('entropyHex:', entropyHex);
-
-      // Generate mnemonic from entropy
       const newMnemonic = bip39.entropyToMnemonic(entropyHex);
       console.log('newMnemonic:', newMnemonic);
-
-      // Generate seed from mnemonic
       const seed = await bip39.mnemonicToSeed(newMnemonic);
       console.log('seed:', seed);
 
-      // Generate root node
-      const root = Bitcoin.bip32.fromSeed(seed);
+      // Create Bitcoin wallet
+      const root = bip32.fromSeed(Buffer.from(seed));
       console.log('root:', root);
-
-      // Derive child node
       const child = root.derivePath("m/44'/0'/0'/0/0");
       console.log('child:', child);
-
-      // Create key pair
-      const keyPair = Bitcoin.ECPair.fromPrivateKey(child.privateKey);
+      const keyPair = ECPair.fromPrivateKey(child.privateKey);
       console.log('keyPair:', keyPair);
 
       setWallet(keyPair);
       setMnemonic(newMnemonic);
 
-      const {address} = Bitcoin.payments.p2pkh({pubkey: keyPair.publicKey});
+      const pubKeyHash = Bitcoin.crypto.hash160(keyPair.publicKey);
+      const scriptPubKey = Bitcoin.script.compile([
+        Bitcoin.opcodes.OP_DUP,
+        Bitcoin.opcodes.OP_HASH160,
+        pubKeyHash,
+        Bitcoin.opcodes.OP_EQUALVERIFY,
+        Bitcoin.opcodes.OP_CHECKSIG,
+      ]);
+
+      const address = Bitcoin.address.fromOutputScript(scriptPubKey, network);
+      console.log('address:', address);
       setAddress(address);
 
-      Alert.alert('Success', 'Wallet created!\nMnemonic: ' + newMnemonic);
+      Alert.alert('Success', 'Wallet created successfully');
     } catch (error) {
       console.error('Wallet creation error:', error);
       // Alert.alert('Error', error.message);
@@ -156,9 +161,11 @@ const styles = StyleSheet.create({
     borderColor: '#ccc',
     padding: 10,
     marginVertical: 10,
+    color: 'white',
   },
   address: {
     marginVertical: 10,
+    color: 'white',
   },
 });
 
