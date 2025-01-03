@@ -25,6 +25,7 @@
     "react-native": "0.76.5",
     "react-native-bitcoinjs-lib": "^2.3.9",
     "react-native-crypto": "^2.2.0",
+    "react-native-linear-gradient": "^2.8.3",
     "react-native-randombytes": "^3.6.1",
     "readable-stream": "^1.0.33",
     "stream-browserify": "^1.0.0"
