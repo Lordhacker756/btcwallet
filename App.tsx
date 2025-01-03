@@ -14,27 +14,47 @@ import {randomBytes} from 'react-native-randombytes';
 import * as bip39 from 'bip39';
 import BIP32Factory from 'bip32';
 import * as ecc from '@bitcoinerlab/secp256k1';
-import ECPairFactory from 'ecpair';
+import ECPairFactory, {ECPairInterface, Signer} from 'ecpair';
 import axios from 'axios';
 import TransactionList from './TransactionList';
 import useSecureStorage from './hooks/useSecureStorage';
 import {Buffer} from 'buffer';
+global.Buffer = Buffer;
+import * as bitcoin from 'bitcoinjs-lib';
 
-const network = Bitcoin.networks.testnet;
+const network = bitcoin.networks.testnet;
 const bip32 = BIP32Factory(ecc);
 const ECPair = ECPairFactory(ecc);
 
 const App = () => {
-  const [wallet, setWallet] = useState(null);
+  const [wallet, setWallet] = useState<ECPairInterface | null>(null);
   const [mnemonic, setMnemonic] = useState('');
   const [address, setAddress] = useState('');
-  const [recipientAddress, setRecipientAddress] = useState('');
-  const [amount, setAmount] = useState('');
+  const [recipientAddress, setRecipientAddress] = useState(
+    'tb1qz0pnh98kfynptg9dtkj06f7sqnlxl3dxnmnjw4',
+  );
+  const [amount, setAmount] = useState('0.000001');
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const {loading, error, storeData, getData, removeData} = useSecureStorage();
+  const [btcPK, setBtcPK] = useState('');
+  let signer_instance: signer;
+
+  class signer {
+    wallet: ECPairInterface;
+    constructor(wallet: ECPairInterface) {
+      this.wallet = wallet;
+    }
+    sign(hash: Buffer) {
+      return wallet?.sign(hash);
+    }
+    getPublicKey() {
+      return wallet?.publicKey;
+    }
+  }
 
   const loadWallet = async () => {
+    console.log('Loading wallet...');
     try {
       const mnemonic = await getData('mnemonic');
       if (mnemonic) {
@@ -45,6 +65,11 @@ const App = () => {
       if (address) {
         setAddress(address);
       }
+
+      const keyPair = await getData('keyPair');
+      if (keyPair) {
+        setWallet(JSON.parse(keyPair));
+      }
     } catch {
       console.error('Error loading wallet:', error);
     }
@@ -54,37 +79,49 @@ const App = () => {
     loadWallet();
   }, []);
 
-  const createNewWallet = async () => {
+  useEffect(() => {
+    if (wallet) {
+    }
+  }, [wallet]);
+
+  // Create Wallet
+  const createWallet = async () => {
     try {
-      const entropy = randomBytes(16);
-      const entropyHex = Buffer.from(entropy).toString('hex');
-      const newMnemonic = bip39.entropyToMnemonic(entropyHex);
-      storeData('mnemonic', newMnemonic);
-      const seed = await bip39.mnemonicToSeed(newMnemonic);
+      // Generate a random mnemonic using bip39
+      const mnemonic = bip39.generateMnemonic();
+      console.log('Generated mnemonic:', mnemonic);
+      setMnemonic(mnemonic);
 
-      const root = bip32.fromSeed(Buffer.from(seed));
-      const child = root.derivePath("m/44'/1'/0'/0/0");
-      const keyPair = ECPair.fromPrivateKey(child.privateKey);
+      // Validate mnemonic
+      if (!bip39.validateMnemonic(mnemonic)) {
+        throw new Error('Generated mnemonic is invalid.');
+      }
 
-      setWallet(keyPair);
-      setMnemonic(newMnemonic);
+      // Derive the seed from the mnemonic
+      const seed = await bip39.mnemonicToSeed(mnemonic);
 
-      const pubKeyHash = Bitcoin.crypto.hash160(keyPair.publicKey);
-      const scriptPubKey = Bitcoin.script.compile([
-        Bitcoin.opcodes.OP_DUP,
-        Bitcoin.opcodes.OP_HASH160,
-        pubKeyHash,
-        Bitcoin.opcodes.OP_EQUALVERIFY,
-        Bitcoin.opcodes.OP_CHECKSIG,
-      ]);
+      // Create a BIP32 root from the seed
+      const root = bip32.fromSeed(seed, network);
 
-      const address = Bitcoin.address.fromOutputScript(scriptPubKey, network);
-      storeData('address', address);
-      setAddress(address);
+      // Derive the first account (m/44'/0'/0')
+      const account = root.derivePath("m/44'/0'/0'");
 
-      Alert.alert('Success', 'Wallet created successfully');
+      // Derive the first receiving address (m/44'/0'/0'/0/0)
+      const firstKeyPair = account.derive(0).derive(0);
+
+      console.log('Key Pair:: ', firstKeyPair);
+      setWallet(firstKeyPair);
+
+      // Get the Bitcoin address
+      const {address: btcAddress} = bitcoin.payments.p2pkh({
+        pubkey: firstKeyPair.publicKey,
+        network,
+      });
+      setAddress(btcAddress);
+      setBtcPK(firstKeyPair.toWIF());
     } catch (error) {
-      console.error('Wallet creation error:', error);
+      console.error('Error creating wallet:', error);
+      throw error;
     }
   };
 
@@ -100,7 +137,8 @@ const App = () => {
       const root = bip32.fromSeed(seed);
       const child = root.derivePath("m/44'/0'/0'/0/0");
       const keyPair = ECPair.fromPrivateKey(child.privateKey);
-      storeData('privateKey', keyPair);
+      storeData('keyPair', JSON.stringify(keyPair));
+      signer_instance = new signer(keyPair);
 
       setWallet(keyPair);
       setMnemonic(seedPhrase);
@@ -158,32 +196,123 @@ const App = () => {
 
   const createTransaction = async () => {
     try {
+      console.log('Starting transaction creation with PSBT...');
+
+      // Fetch UTXOs
       const utxosResponse = await axios.get(
-        `https://blockstream.info/testnet/api/address/${address}/utxo`,
+        `https://mempool.space/testnet4/api/address/${address}/utxo`,
       );
       const utxos = utxosResponse.data;
-      const txb = new Bitcoin.TransactionBuilder(network);
+      console.log('UTXOs fetched:', utxos);
+
+      // Create new PSBT
+      const psbt = new bitcoin.Psbt({
+        network: bitcoin.networks.testnet,
+      });
       let inputSum = 0;
 
-      utxos.forEach(utxo => {
-        txb.addInput(utxo.txid, utxo.vout);
+      // Add inputs
+      for (const utxo of utxos) {
+        console.log('Processing UTXO:', utxo);
+
+        // Fetch full transaction for input
+        const txResponse = await axios.get(
+          `https://mempool.space/testnet4/api/tx/${utxo.txid}/hex`,
+        );
+        const txHex = txResponse.data;
+        console.log('Retrieved transaction hex for input');
+
+        psbt.addInput({
+          hash: utxo.txid,
+          index: utxo.vout,
+          nonWitnessUtxo: Buffer.from(txHex, 'hex'),
+        });
+
         inputSum += utxo.value;
-      });
+        console.log('Added input, running sum:', inputSum);
+      }
 
+      // Calculate amounts
       const amountInSatoshis = Math.floor(parseFloat(amount) * 1e8);
-      const fee = 1000;
-      txb.addOutput(recipientAddress, amountInSatoshis);
-      txb.addOutput(address, inputSum - amountInSatoshis - fee);
+      const fee = 1000; // Fixed fee
+      console.log('Amount in satoshis:', amountInSatoshis);
+      console.log('Fee:', fee);
 
-      utxos.forEach((utxo, index) => {
-        txb.sign(index, wallet);
+      // Check funds
+      if (inputSum < amountInSatoshis + fee) {
+        throw new Error(
+          `Insufficient funds. Required: ${
+            amountInSatoshis + fee
+          }, Available: ${inputSum}`,
+        );
+      }
+
+      // Add recipient output
+      psbt.addOutput({
+        address: recipientAddress,
+        value: amountInSatoshis,
+      });
+      console.log('Added recipient output', psbt);
+
+      // Add change output if needed
+      const changeAmount = inputSum - amountInSatoshis - fee;
+      if (changeAmount > 546) {
+        psbt.addOutput({
+          address: address,
+          value: changeAmount,
+        });
+        console.log('Added change output:', changeAmount);
+      }
+
+      const {signInput, validateSignaturesOfInput} = bitcoin.Psbt.prototype;
+
+      // Sign all inputs
+      utxos.forEach((_, index) => {
+        console.log(
+          'Signer public key:',
+          signer_instance?.getPublicKey()?.toString('hex'),
+        );
+        console.log('Wallet private key:', wallet?.privateKey?.toString('hex'));
+        console.log(
+          "Testing signer function's sign method...",
+          signer_instance.sign('Dattebayo'),
+        );
+        try {
+          psbt.signInput(index, signer_instance);
+          console.log(`Input ${index} signed`);
+          psbt.validateSignaturesOfInput(index);
+          console.log(`Input ${index} signed and validated`);
+        } catch (err) {
+          console.error(`Error signing input ${index}:`, err);
+          throw err;
+        }
       });
 
-      const rawTx = txb.build().toHex();
+      // Finalize and build
+      psbt.finalizeAllInputs();
+      const transaction = psbt.extractTransaction();
+      const rawTx = transaction.toHex();
+      console.log('Transaction finalized, raw hex:', rawTx);
 
-      Alert.alert('Success', 'Transaction sent successfully');
+      // Broadcast
+      const broadcastResponse = await axios.post(
+        'https://blockstream.info/testnet/api/tx',
+        rawTx,
+        {
+          headers: {
+            'Content-Type': 'text/plain',
+          },
+        },
+      );
+
+      if (broadcastResponse.status === 200) {
+        console.log('Transaction broadcast successful');
+        Alert.alert('Success', 'Transaction sent successfully');
+        await fetchBalance(address);
+        await fetchTransactions(address);
+      }
     } catch (error) {
-      console.error('Error creating transaction:', error);
+      console.error('Transaction creation failed:', error);
       Alert.alert('Error', error.message);
     }
   };
@@ -194,7 +323,7 @@ const App = () => {
 
       <Button
         title="Create New Wallet"
-        onPress={createNewWallet}
+        onPress={createWallet}
         color="#4CAF50"
       />
 
