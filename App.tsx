@@ -7,13 +7,18 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {WalletProvider} from './context/WalletContext';
 import MainScreen from './screens/MainScreen';
 import GetStarted from './screens/GetStarted';
-import CreateWallet from './screens/Onboarding/CreateWallet';
+import CreateWallet, {
+  ECPairInterface,
+  Signer,
+} from './screens/Onboarding/CreateWallet';
 import ImportWallet from './screens/Onboarding/ImportWallet';
 import GradientBackground from './components/GradientBackground';
 import {colors} from './theme/colors';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+global.Buffer = Buffer;
+import * as bitcoin from 'bitcoinjs-lib';
 
 const HomeStack = () => (
   <Stack.Navigator>
