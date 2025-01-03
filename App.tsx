@@ -1,4 +1,12 @@
-import {StyleSheet, Text, View, TextInput, Button, Alert} from 'react-native';
+import {
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  Button,
+  Alert,
+  ScrollView,
+} from 'react-native';
 import React, {useEffect, useState} from 'react';
 import './shim';
 import * as Bitcoin from 'react-native-bitcoinjs-lib';
@@ -8,10 +16,12 @@ import BIP32Factory from 'bip32';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import ECPairFactory from 'ecpair';
 import axios from 'axios';
-import TransactionList from './components/TransactionList';
 import GradientBackground from './components/GradientBackground';
-const network = Bitcoin.networks.testnet;
+import TransactionList from './components/TransactionList';
+import useSecureStorage from './hooks/useSecureStorage';
+import {Buffer} from 'buffer';
 
+const network = Bitcoin.networks.testnet;
 const bip32 = BIP32Factory(ecc);
 const ECPair = ECPairFactory(ecc);
 
@@ -24,27 +34,39 @@ const App = () => {
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [utxos, setUTXOs] = useState([]);
+  const {loading, error, storeData, getData, removeData} = useSecureStorage();
+
+  const loadWallet = async () => {
+    try {
+      const mnemonic = await getData('mnemonic');
+      if (mnemonic) {
+        setMnemonic(mnemonic);
+      }
+
+      const address = await getData('address');
+      if (address) {
+        setAddress(address);
+      }
+    } catch {
+      console.error('Error loading wallet:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadWallet();
+  }, []);
 
   const createNewWallet = async () => {
     try {
       const entropy = randomBytes(16);
-      console.log('entropy:', entropy);
       const entropyHex = Buffer.from(entropy).toString('hex');
-      console.log('entropyHex:', entropyHex);
       const newMnemonic = bip39.entropyToMnemonic(entropyHex);
-      console.log('newMnemonic:', newMnemonic);
+      storeData('mnemonic', newMnemonic);
       const seed = await bip39.mnemonicToSeed(newMnemonic);
-      console.log('seed:', seed);
 
-      // Create Bitcoin wallet
       const root = bip32.fromSeed(Buffer.from(seed));
-      console.log('root:', root);
       const child = root.derivePath("m/44'/1'/0'/0/0");
-      console.log('child:', child);
-      console.log('Private Key:', child.privateKey.toString('hex'));
-      console.log('Public Key:', child.publicKey.toString('hex'));
       const keyPair = ECPair.fromPrivateKey(child.privateKey);
-      console.log('keyPair:', keyPair);
 
       setWallet(keyPair);
       setMnemonic(newMnemonic);
@@ -59,34 +81,33 @@ const App = () => {
       ]);
 
       const address = Bitcoin.address.fromOutputScript(scriptPubKey, network);
-      console.log('address:', address);
+      storeData('address', address);
       setAddress(address);
 
       Alert.alert('Success', 'Wallet created successfully');
     } catch (error) {
       console.error('Wallet creation error:', error);
-      // Alert.alert('Error', error.message);
     }
   };
 
-  // Import existing wallet
-  const importWallet = async (seedPhrase) => {
-    console.log('seedPhrase:', seedPhrase);
+
+  const importWallet = async seedPhrase => {
     try {
-      // Fix the validation logic - we were throwing on valid mnemonics
       if (!bip39.validateMnemonic(seedPhrase)) {
         throw new Error('Invalid mnemonic');
       }
+
+      storeData('mnemonic', seedPhrase);
 
       const seed = await bip39.mnemonicToSeed(seedPhrase);
       const root = bip32.fromSeed(seed);
       const child = root.derivePath("m/44'/0'/0'/0/0");
       const keyPair = ECPair.fromPrivateKey(child.privateKey);
+      storeData('privateKey', keyPair);
 
       setWallet(keyPair);
       setMnemonic(seedPhrase);
 
-      // Generate address using same method as createNewWallet
       const pubKeyHash = Bitcoin.crypto.hash160(keyPair.publicKey);
       const scriptPubKey = Bitcoin.script.compile([
         Bitcoin.opcodes.OP_DUP,
@@ -98,6 +119,7 @@ const App = () => {
 
       const address = Bitcoin.address.fromOutputScript(scriptPubKey, network);
       setAddress(address);
+      storeData('address', address);
 
       Alert.alert('Success', 'Wallet imported successfully');
     } catch (error) {
@@ -150,7 +172,7 @@ const App = () => {
     if (address) {
       fetchBalance(address);
       fetchTransactions(address);
-      fetchUTXOs(address);
+      // fetchUTXOs(address);
     }
   }, [address]);
 
@@ -159,105 +181,147 @@ const App = () => {
       const response = await axios.get(
         `https://mempool.space/testnet4/api/address/${address}/txs`,
       );
-      console.log('Transactions response:', response.data);
       setTransactions(response.data);
     } catch (error) {
       console.error('Error fetching transactions:', error);
     }
   };
 
-  const fetchUTXOs = async address => {
-    try {
-      const response = await axios.get(
-        `https://mempool.space/testnet4/api/address/${address}/utxo`,
-      );
-      console.log('UTXOs response:', response.data);
-      // return response.data;
-      setUTXOs(response.data);
-    } catch (error) {
-      console.error('Error fetching UTXOs:', error);
-    }
-  };
+  // const createTransaction = async () => {
+  //   try {
+  //     const utxosResponse = await axios.get(
+  //       `https://blockstream.info/testnet/api/address/${address}/utxo`,
+  //     );
+  //     const utxos = utxosResponse.data;
+  //     const txb = new Bitcoin.TransactionBuilder(network);
+  //     let inputSum = 0;
+
+  //     utxos.forEach(utxo => {
+  //       txb.addInput(utxo.txid, utxo.vout);
+  //       inputSum += utxo.value;
+  //     });
+
+  //     const amountInSatoshis = Math.floor(parseFloat(amount) * 1e8);
+  //     const fee = 1000;
+  //     txb.addOutput(recipientAddress, amountInSatoshis);
+  //     txb.addOutput(address, inputSum - amountInSatoshis - fee);
+
+  //     utxos.forEach((utxo, index) => {
+  //       txb.sign(index, wallet);
+  //     });
+
+  //     const rawTx = txb.build().toHex();
+
+  //     Alert.alert('Success', 'Transaction sent successfully');
+  //   } catch (error) {
+  //     console.error('Error fetching UTXOs:', error);
+  //   }
+  // };
 
   return (
-    <GradientBackground>
-      <View style={styles.container}>
-        <Button title="Create New Wallet" onPress={createNewWallet} />
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.heading}>Bitcoin Wallet</Text>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Enter mnemonic to import"
-          value={mnemonic}
-          onChangeText={setMnemonic}
-        />
-        <Button title="Import Wallet" onPress={() => importWallet(mnemonic)} />
+      <Button
+        title="Create New Wallet"
+        onPress={createNewWallet}
+        color="#4CAF50"
+      />
 
-        {address && (
-          <TextInput style={styles.address}>
-            Receiving Address: {address}
-          </TextInput>
-        )}
+      <TextInput
+        style={styles.input}
+        placeholder="Enter mnemonic to import"
+        placeholderTextColor="#888"
+        value={mnemonic}
+        onChangeText={setMnemonic}
+      />
+      <Button
+        title="Import Wallet"
+        onPress={() => importWallet(mnemonic)}
+        color="#2196F3"
+      />
 
-        {address && (
-          <>
-            <Text style={styles.address}>Balance: {balance} BTC</Text>
-            {/* <Text style={styles.address}>UTXO: {utxos} BTC</Text> */}
-          </>
-        )}
+      {address && (
+        <Text style={styles.address}>Receiving Address: {address}</Text>
+      )}
 
-        <TextInput
-          style={styles.input}
-          placeholder="Recipient Address"
-          value={recipientAddress}
-          onChangeText={setRecipientAddress}
-        />
+      {address && <Text style={styles.balance}>Balance: {balance} BTC</Text>}
 
-        <TextInput
-          style={styles.input}
-          placeholder="Amount BTC"
-          value={amount}
-          onChangeText={setAmount}
-          keyboardType="numeric"
-        />
+      <TextInput
+        style={styles.input}
+        placeholder="Recipient Address"
+        placeholderTextColor="#888"
+        value={recipientAddress}
+        onChangeText={setRecipientAddress}
+      />
 
-        <Button
-          title="Send Transaction"
-          onPress={createTransaction}
-          disabled={!wallet}
+      <TextInput
+        style={styles.input}
+        placeholder="Amount BTC"
+        placeholderTextColor="#888"
+        value={amount}
+        onChangeText={setAmount}
+        keyboardType="numeric"
+      />
 
-        />
+      <Button
+        title="Send Transaction"
+        onPress={createTransaction}
+        color="#FF5722"
+        disabled={!wallet}
+      />
 
-        {address && (
-          <>
-            <Text style={styles.address}>
-              Transactions: {transactions?.length}
-            </Text>
-            <TransactionList transactions={transactions} />
-          </>
-        )}
-      </View>
-    </GradientBackground>
+      {address && (
+        <>
+          <Text style={styles.transactionCount}>
+            Transactions: {transactions?.length}
+          </Text>
+          <TransactionList transactions={transactions} />
+        </>
+      )}
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 100,
-    flex: 1,
+    flexGrow: 1,
     padding: 20,
+    backgroundColor: '#f9f9f9',
+    alignItems: 'center',
+  },
+  heading: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    color: '#333',
   },
   input: {
     borderWidth: 1,
-    borderColor: '#aaa',
+    borderColor: '#ccc',
+    borderRadius: 8,
     padding: 10,
     marginVertical: 10,
-    color: 'black',
-    backgroundColor: 'white',
-    borderRadius: 10,
+    width: '100%',
+    backgroundColor: '#fff',
+    color: '#333',
   },
   address: {
     marginVertical: 10,
-    color: 'black',
+    fontSize: 16,
+    color: '#555',
+    textAlign: 'center',
+  },
+  balance: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginVertical: 10,
+    color: '#4CAF50',
+  },
+  transactionCount: {
+    fontSize: 16,
+    marginVertical: 10,
+    color: '#555',
   },
   stylesBtn: {
     backgroundColor: 'red',

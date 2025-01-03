@@ -44,13 +44,11 @@ const TransactionList = ({ transactions }) => {
   };
 
   return (
-    <ScrollView>
       <FlatList
         data={transactions}
         renderItem={renderTransaction}
         keyExtractor={(item) => item.txid}
       />
-    </ScrollView>
   );
 };
 
