@@ -1,23 +1,26 @@
 import React from 'react';
-import { View, Text, FlatList, StyleSheet, ScrollView } from 'react-native';
+import {View, Text, FlatList, StyleSheet, ScrollView} from 'react-native';
 
-const TransactionList = ({ transactions }) => {
-
-  const slicer = (str) => {
+const TransactionList = ({transactions}) => {
+  const slicer = str => {
     return str.slice(0, 6) + '...' + str.slice(-6);
   };
 
-  const renderTransaction = ({ item }) => {
+  const renderTransaction = ({item}) => {
     return (
       <View style={styles.transactionCard}>
         <Text style={styles.txid}>TXID: {slicer(item.txid)}</Text>
         <Text>Version: {item.version}</Text>
         <Text>Locktime: {item.locktime}</Text>
         <Text>Fee: {item.fee}</Text>
-        <Text>Status: {item.status.confirmed ? 'Confirmed' : 'Unconfirmed'}</Text>
+        <Text>
+          Status: {item.status.confirmed ? 'Confirmed' : 'Unconfirmed'}
+        </Text>
         <Text>Block Height: {item.status.block_height}</Text>
         <Text>Block Hash: {slicer(item.status.block_hash)}</Text>
-        <Text>Block Time: {new Date(item.status.block_time * 1000).toLocaleString()}</Text>
+        <Text>
+          Block Time: {new Date(item.status.block_time * 1000).toLocaleString()}
+        </Text>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Inputs:</Text>
@@ -44,11 +47,11 @@ const TransactionList = ({ transactions }) => {
   };
 
   return (
-      <FlatList
-        data={transactions}
-        renderItem={renderTransaction}
-        keyExtractor={(item) => item.txid}
-      />
+    <FlatList
+      data={transactions}
+      renderItem={renderTransaction}
+      keyExtractor={item => item.txid}
+    />
   );
 };
 
