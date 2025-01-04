@@ -1,3 +1,10 @@
 {
-  "extends": "@react-native/typescript-config/tsconfig.json"
+  "extends": "@react-native/typescript-config/tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "paths": {
+      "stream": ["./node_modules/stream-browserify"],
+      "buffer": ["./node_modules/buffer"]
+    }
+  }
 }

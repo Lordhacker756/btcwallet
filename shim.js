@@ -21,6 +21,13 @@ if (typeof localStorage !== 'undefined') {
   localStorage.debug = isDev ? '*' : ''
 }
 
-// If using the crypto shim, uncomment the following line to ensure
-// crypto is loaded first, so it can populate global.crypto
-// require('crypto')
+// Crypto setup
+const crypto = require('crypto')
+if (!global.crypto) global.crypto = crypto
+if (!global.crypto.getRandomValues) {
+  global.crypto.getRandomValues = function (arr) {
+    const bytes = crypto.randomBytes(arr.length)
+    arr.set(bytes)
+    return arr
+  }
+}

@@ -25,7 +25,7 @@ const config = {
         extraNodeModules: {
             crypto: require.resolve('react-native-crypto'),
             stream: require.resolve('stream-browserify'),
-            buffer: require.resolve('buffer'),
+            buffer: require.resolve('buffer/'),
             events: require.resolve('events'),
             process: require.resolve('process/browser'),
             assert: require.resolve('assert'),
