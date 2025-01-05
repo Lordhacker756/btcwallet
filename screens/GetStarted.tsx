@@ -44,7 +44,7 @@ const styles = StyleSheet.create({
   },
   buttons: {
     width: '100%',
-    gap: spacing.lg,
+    gap: spacing.sm,
     marginBottom: spacing.xl,
   },
 });

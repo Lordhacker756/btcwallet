@@ -31,7 +31,7 @@ const TabNavigation = () => (
       options={{
         tabBarLabel: 'Ethereum',
         tabBarIcon: ({color, size}) => (
-          <Icon name="abacus" color={color} size={24} />
+          <Icon name="ethereum" color={color} size={24} />
         ),
       }}
     />

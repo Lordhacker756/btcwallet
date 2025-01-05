@@ -102,6 +102,7 @@ export const useBitcoin = () => {
       const child = root.derivePath(PATH);
       const pubkeyBuffer = Buffer.from(child.publicKey);
 
+      // Native Segwit
       const {address} = bitcoin.payments.p2wpkh({
         pubkey: pubkeyBuffer,
         network: NETWORK,
@@ -167,8 +168,6 @@ export const useBitcoin = () => {
         const response = await axios.get(
           `${MEMPOOL_API}/address/${targetAddress}/txs`,
         );
-
-        console.log('getTransactions::', response.data);
 
         const formattedTxs: Transaction[] = response.data.map((tx: any) => {
           // Calculate the total input and output values for the target address

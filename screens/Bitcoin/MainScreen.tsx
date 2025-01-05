@@ -5,6 +5,7 @@ import {
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
+  SafeAreaView,
 } from 'react-native';
 import React, {useEffect, useState} from 'react';
 import GradientBackground from '../../components/GradientBackground';
@@ -138,136 +139,138 @@ const MainScreen = () => {
 
   return (
     <GradientBackground>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.heading}>Bitcoin Wallet</Text>
-        {error && <Text style={styles.error}>{error}</Text>}
+      <SafeAreaView style={{flex: 1}}>
+        <ScrollView contentContainerStyle={styles.container}>
+          <Text style={styles.heading}>Bitcoin Wallet</Text>
+          {error && <Text style={styles.error}>{error}</Text>}
 
-        {!walletInfo ? (
-          <>
-            <Button
-              title="Create New Wallet"
-              onPress={handleCreateWallet}
-              variant="primary"
-              disabled={creatingWallet}
-              loading={creatingWallet}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Enter mnemonic to import"
-              placeholderTextColor="#888"
-              value={importMnemonic}
-              onChangeText={setImportMnemonic}
-              editable={!importingWallet}
-            />
-            <Button
-              title="Import Wallet"
-              onPress={handleImportWallet}
-              variant="primary"
-              disabled={importingWallet}
-              loading={importingWallet}
-            />
-          </>
-        ) : (
-          <>
-            <View style={styles.walletInfo}>
-              <Text variant="h2">Wallet Address</Text>
-              <View style={styles.addressContainer}>
-                <Text
-                  style={styles.address}
-                  ellipsizeMode="tail"
-                  numberOfLines={1}>
-                  {walletInfo.address}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    Clipboard.setString(walletInfo.address);
-                    Alert.alert(
-                      'Success',
-                      'Wallet address copied to clipboard',
-                    );
-                  }}
-                  style={styles.copyButton}>
-                  <Text style={styles.copyButtonText}>Copy</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.balanceContainer}>
-                <Text variant="h2" style={styles.balanceLabel}>
-                  Balance
-                </Text>
-                <TouchableOpacity
-                  onPress={async () => {
-                    try {
-                      await getBalance();
-                      await getTransactions();
-                    } catch (err: any) {
-                      Alert.alert('Error', err.message);
-                    }
-                  }}
-                  style={styles.refreshButton}
-                  disabled={gettingBalance || gettingTransactions}>
-                  <Text style={styles.refreshButtonText}>Refresh</Text>
-                </TouchableOpacity>
-              </View>
-              {gettingBalance ? (
-                <ActivityIndicator size="small" />
-              ) : (
-                <Text style={styles.balance}>{balance.toFixed(8)} tBTC</Text>
-              )}
-            </View>
-
-            <View style={styles.sendSection}>
-              <Text variant="h2">Send Bitcoin</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Recipient Address"
-                placeholderTextColor="#888"
-                value={recipientAddress}
-                onChangeText={setRecipientAddress}
-                editable={!sendingBitcoin}
-              />
-
-              <TextInput
-                style={styles.input}
-                placeholder="Amount BTC"
-                placeholderTextColor="#888"
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="numeric"
-                editable={!sendingBitcoin}
-              />
-
+          {!walletInfo ? (
+            <>
               <Button
-                title="Send"
-                onPress={handleSendBitcoin}
+                title="Create New Wallet"
+                onPress={handleCreateWallet}
                 variant="primary"
-                disabled={sendingBitcoin}
-                loading={sendingBitcoin}
+                disabled={creatingWallet}
+                loading={creatingWallet}
               />
-            </View>
 
-            <View style={styles.transactionSection}>
-              <Text variant="h2">Recent Transactions</Text>
-              {gettingTransactions ? (
-                <ActivityIndicator size="small" style={styles.loading} />
-              ) : transactions.length === 0 ? (
-                <Text style={styles.balance}>No transactions found</Text>
-              ) : (
-                transactions.map(tx => (
-                  <View key={tx.txid} style={styles.transaction}>
-                    <Text style={styles.txType}>{tx.type}</Text>
-                    <Text style={styles.txAmount}>
-                      {tx.type === 'received' ? '+' : '-'}{' '}
-                      {Math.abs(tx.value).toFixed(8)} BTC
-                    </Text>
-                    <Text style={styles.txStatus}>{tx.status}</Text>
-                  </View>
-                ))
-              )}
-            </View>
-          </>
-        )}
-      </ScrollView>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter mnemonic to import"
+                placeholderTextColor="#888"
+                value={importMnemonic}
+                onChangeText={setImportMnemonic}
+                editable={!importingWallet}
+              />
+              <Button
+                title="Import Wallet"
+                onPress={handleImportWallet}
+                variant="primary"
+                disabled={importingWallet}
+                loading={importingWallet}
+              />
+            </>
+          ) : (
+            <>
+              <View style={styles.walletInfo}>
+                <Text variant="h2">Wallet Address</Text>
+                <View style={styles.addressContainer}>
+                  <Text
+                    style={styles.address}
+                    ellipsizeMode="tail"
+                    numberOfLines={1}>
+                    {walletInfo.address}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Clipboard.setString(walletInfo.address);
+                      Alert.alert(
+                        'Success',
+                        'Wallet address copied to clipboard',
+                      );
+                    }}
+                    style={styles.copyButton}>
+                    <Text style={styles.copyButtonText}>Copy</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.balanceContainer}>
+                  <Text variant="h2" style={styles.balanceLabel}>
+                    Balance
+                  </Text>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      try {
+                        await getBalance();
+                        await getTransactions();
+                      } catch (err: any) {
+                        Alert.alert('Error', err.message);
+                      }
+                    }}
+                    style={styles.refreshButton}
+                    disabled={gettingBalance || gettingTransactions}>
+                    <Text style={styles.refreshButtonText}>Refresh</Text>
+                  </TouchableOpacity>
+                </View>
+                {gettingBalance ? (
+                  <ActivityIndicator size="small" />
+                ) : (
+                  <Text style={styles.balance}>{balance.toFixed(8)} tBTC</Text>
+                )}
+              </View>
+
+              <View style={styles.sendSection}>
+                <Text variant="h2">Send Bitcoin</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Recipient Address"
+                  placeholderTextColor="#888"
+                  value={recipientAddress}
+                  onChangeText={setRecipientAddress}
+                  editable={!sendingBitcoin}
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Amount BTC"
+                  placeholderTextColor="#888"
+                  value={amount}
+                  onChangeText={setAmount}
+                  keyboardType="numeric"
+                  editable={!sendingBitcoin}
+                />
+
+                <Button
+                  title="Send"
+                  onPress={handleSendBitcoin}
+                  variant="primary"
+                  disabled={sendingBitcoin}
+                  loading={sendingBitcoin}
+                />
+              </View>
+
+              <View style={styles.transactionSection}>
+                <Text variant="h2">Recent Transactions</Text>
+                {gettingTransactions ? (
+                  <ActivityIndicator size="small" style={styles.loading} />
+                ) : transactions.length === 0 ? (
+                  <Text style={styles.balance}>No transactions found</Text>
+                ) : (
+                  transactions.map(tx => (
+                    <View key={tx.txid} style={styles.transaction}>
+                      <Text style={styles.txType}>{tx.type}</Text>
+                      <Text style={styles.txAmount}>
+                        {tx.type === 'received' ? '+' : '-'}{' '}
+                        {Math.abs(tx.value).toFixed(8)} BTC
+                      </Text>
+                      <Text style={styles.txStatus}>{tx.status}</Text>
+                    </View>
+                  ))
+                )}
+              </View>
+            </>
+          )}
+        </ScrollView>
+      </SafeAreaView>
     </GradientBackground>
   );
 };
