@@ -4,6 +4,7 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
 import React, {useEffect, useState} from 'react';
 import GradientBackground from '../../components/GradientBackground';
@@ -171,10 +172,43 @@ const MainScreen = () => {
           <>
             <View style={styles.walletInfo}>
               <Text variant="h2">Wallet Address</Text>
-              <Text style={styles.address}>{walletInfo.address}</Text>
-              <Text variant="h2" style={styles.balanceLabel}>
-                Balance
-              </Text>
+              <View style={styles.addressContainer}>
+                <Text
+                  style={styles.address}
+                  ellipsizeMode="tail"
+                  numberOfLines={1}>
+                  {walletInfo.address}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    Clipboard.setString(walletInfo.address);
+                    Alert.alert(
+                      'Success',
+                      'Wallet address copied to clipboard',
+                    );
+                  }}
+                  style={styles.copyButton}>
+                  <Text style={styles.copyButtonText}>Copy</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.balanceContainer}>
+                <Text variant="h2" style={styles.balanceLabel}>
+                  Balance
+                </Text>
+                <TouchableOpacity
+                  onPress={async () => {
+                    try {
+                      await getBalance();
+                      await getTransactions();
+                    } catch (err: any) {
+                      Alert.alert('Error', err.message);
+                    }
+                  }}
+                  style={styles.refreshButton}
+                  disabled={gettingBalance || gettingTransactions}>
+                  <Text style={styles.refreshButtonText}>Refresh</Text>
+                </TouchableOpacity>
+              </View>
               {gettingBalance ? (
                 <ActivityIndicator size="small" />
               ) : (
@@ -266,12 +300,31 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginVertical: 10,
   },
+  addressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginVertical: 5,
+  },
   address: {
     fontSize: 14,
-    marginVertical: 5,
+    flex: 1,
+    marginRight: 10,
+  },
+  copyButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  copyButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   balanceLabel: {
     marginTop: 10,
+    width: '80%',
   },
   balance: {
     fontSize: 24,
@@ -301,6 +354,23 @@ const styles = StyleSheet.create({
   },
   txStatus: {
     opacity: 0.7,
+  },
+  balanceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  refreshButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  refreshButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });
 

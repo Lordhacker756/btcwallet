@@ -8,7 +8,7 @@ import axios from 'axios';
 import * as ecpair from 'ecpair';
 
 // Constants
-const NETWORK = bitcoin.networks.testnet; // Use networks.testnet for testnet
+const NETWORK = bitcoin.networks.testnet;
 const PATH = `m/84'/0'/0'/0/0`; // BIP84 path for native segwit
 const MEMPOOL_API = 'https://mempool.space/testnet4/api';
 
@@ -58,10 +58,11 @@ export const useBitcoin = () => {
     setError(null);
 
     try {
+      // HD Wallet
       const mnemonic = bip39.generateMnemonic();
       const seed = mnemonicToSeedSync(mnemonic);
       const root = bip32.fromSeed(seed);
-      const child = root.derivePath(PATH);
+      const child = root.derivePath(PATH); //Native Segwit
       const pubkeyBuffer = Buffer.from(child.publicKey);
 
       const {address} = bitcoin.payments.p2wpkh({
@@ -167,18 +168,34 @@ export const useBitcoin = () => {
           `${MEMPOOL_API}/address/${targetAddress}/txs`,
         );
 
-        const formattedTxs: Transaction[] = response.data.map((tx: any) => ({
-          txid: tx.txid,
-          value: tx.value / 100000000,
-          status: tx.status.confirmed ? 'confirmed' : 'pending',
-          timestamp: tx.status.block_time,
-          type: tx.vin.some(
-            (input: any) =>
-              input.prevout.scriptpubkey_address === targetAddress,
-          )
-            ? 'sent'
-            : 'received',
-        }));
+        console.log('getTransactions::', response.data);
+
+        const formattedTxs: Transaction[] = response.data.map((tx: any) => {
+          // Calculate the total input and output values for the target address
+          const totalInput = tx.vin
+            .filter(
+              (input: any) =>
+                input.prevout.scriptpubkey_address === targetAddress,
+            )
+            .reduce((sum: number, input: any) => sum + input.prevout.value, 0);
+
+          const totalOutput = tx.vout
+            .filter(
+              (output: any) => output.scriptpubkey_address === targetAddress,
+            )
+            .reduce((sum: number, output: any) => sum + output.value, 0);
+
+          // Calculate transaction amount
+          const amount = totalOutput - totalInput;
+
+          return {
+            txid: tx.txid,
+            value: amount / 100000000, // Convert from satoshis to BTC
+            status: tx.status.confirmed ? 'confirmed' : 'pending',
+            timestamp: tx.status.block_time,
+            type: amount < 0 ? 'sent' : 'received',
+          };
+        });
 
         setTransactions(formattedTxs);
         return formattedTxs;
@@ -211,16 +228,45 @@ export const useBitcoin = () => {
           `${MEMPOOL_API}/address/${walletInfo.address}/utxo`,
         );
         const utxos = utxosResponse.data;
+        console.log('UTXOs:', JSON.stringify(utxos, null, 2));
+
+        // Fetch complete UTXO information for each UTXO
+        const completeUtxos = await Promise.all(
+          utxos.map(async (utxo: any) => {
+            const txResponse = await axios.get(
+              `${MEMPOOL_API}/tx/${utxo.txid}`,
+            );
+            const tx = txResponse.data;
+            return {
+              ...utxo,
+              scriptpubkey: tx.vout[utxo.vout].scriptpubkey,
+              scriptpubkey_asm: tx.vout[utxo.vout].scriptpubkey_asm,
+              scriptpubkey_type: tx.vout[utxo.vout].scriptpubkey_type,
+            };
+          }),
+        );
 
         // Create transaction
         const psbt = new bitcoin.Psbt({network: NETWORK});
 
         let totalInput = 0;
-        for (const utxo of utxos) {
+        for (const utxo of completeUtxos) {
+          console.log('Processing UTXO:', {
+            txid: utxo.txid,
+            scriptpubkey: utxo.scriptpubkey,
+            value: utxo.value,
+            vout: utxo.vout,
+          });
+
           totalInput += utxo.value;
+          const txid = Buffer.from(utxo.txid, 'hex').reverse();
+          console.log('TXID Buffer created:', txid);
+
           const witnessScript = Buffer.from(utxo.scriptpubkey, 'hex');
+          console.log('Witness Script Buffer created:', witnessScript);
+
           psbt.addInput({
-            hash: utxo.txid,
+            hash: txid,
             index: utxo.vout,
             witnessUtxo: {
               script: witnessScript,
@@ -252,17 +298,32 @@ export const useBitcoin = () => {
         }
 
         // Sign transaction
+        console.log('Private key hex:', walletInfo.privateKey);
         const keyPair = ECPair.fromPrivateKey(
           Buffer.from(walletInfo.privateKey, 'hex'),
+          {network: NETWORK},
         );
+        console.log('KeyPair created:', {
+          publicKey: keyPair.publicKey.toString('hex'),
+          compressed: keyPair.compressed,
+        });
 
         for (let i = 0; i < psbt.inputCount; i++) {
-          psbt.signInput(i, keyPair);
+          psbt.signInput(i, {
+            publicKey: Buffer.from(keyPair.publicKey),
+            sign: (hash: Buffer) => {
+              console.log('Signing hash:', hash.toString('hex'));
+              const sig = keyPair.sign(hash);
+              return Buffer.from(sig);
+            },
+          });
         }
 
         psbt.finalizeAllInputs();
 
         const tx = psbt.extractTransaction();
+
+        console.log('Transaction:', tx.toHex());
 
         // Broadcast transaction
         const broadcastResponse = await axios.post(
@@ -275,6 +336,7 @@ export const useBitcoin = () => {
 
         return broadcastResponse.data; // Returns transaction ID
       } catch (err: any) {
+        console.log('Error insendBitcoin::', err);
         setError(err.message);
         throw err;
       } finally {
