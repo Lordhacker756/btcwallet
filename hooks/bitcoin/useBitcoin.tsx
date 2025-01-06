@@ -1,4 +1,4 @@
-import {useState, useCallback} from 'react';
+import {useState, useCallback, useEffect} from 'react';
 import * as bitcoin from 'bitcoinjs-lib';
 import {BIP32Factory} from 'bip32';
 import * as ecc from '@bitcoinerlab/secp256k1';
@@ -6,11 +6,20 @@ import {mnemonicToSeedSync} from 'bip39';
 import * as bip39 from 'bip39';
 import axios from 'axios';
 import * as ecpair from 'ecpair';
+import useSecureStorage from '../useSecureStorage';
 
 // Constants
 const NETWORK = bitcoin.networks.testnet;
 const PATH = `m/84'/0'/0'/0/0`; // BIP84 path for native segwit
 const MEMPOOL_API = 'https://mempool.space/testnet4/api';
+
+// Storage keys
+const STORAGE_KEYS = {
+  ADDRESS: 'btc_address',
+  PUBLIC_KEY: 'btc_public_key',
+  PRIVATE_KEY: 'btc_private_key',
+  MNEMONIC: 'btc_mnemonic',
+};
 
 // Initialize ECPair
 const ECPair = ecpair.ECPairFactory(ecc);
@@ -48,9 +57,76 @@ export const useBitcoin = () => {
   const [gettingTransactions, setGettingTransactions] =
     useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingWallet, setLoadingWallet] = useState<boolean>(true);
 
-  // Initialize BIP32
+  // Initialize BIP32 and secure storage
   const bip32 = BIP32Factory(ecc);
+  const {storeData, getData, removeData} = useSecureStorage();
+
+  // Load wallet from secure storage
+  useEffect(() => {
+    const loadWallet = async () => {
+      try {
+        const [address, publicKey, privateKey, mnemonic] = await Promise.all([
+          getData(STORAGE_KEYS.ADDRESS),
+          getData(STORAGE_KEYS.PUBLIC_KEY),
+          getData(STORAGE_KEYS.PRIVATE_KEY),
+          getData(STORAGE_KEYS.MNEMONIC),
+        ]);
+
+        if (address && publicKey && privateKey && mnemonic) {
+          setWalletInfo({
+            address,
+            publicKey,
+            privateKey,
+            mnemonic,
+          });
+        }
+      } catch (err) {
+        console.error('Error loading wallet from secure storage:', err);
+      } finally {
+        setLoadingWallet(false);
+      }
+    };
+
+    loadWallet();
+  }, [getData]);
+
+  // Save wallet info to secure storage
+  const saveWalletToStorage = useCallback(
+    async (info: WalletInfo) => {
+      try {
+        await Promise.all([
+          storeData(STORAGE_KEYS.ADDRESS, info.address),
+          storeData(STORAGE_KEYS.PUBLIC_KEY, info.publicKey),
+          storeData(STORAGE_KEYS.PRIVATE_KEY, info.privateKey),
+          storeData(STORAGE_KEYS.MNEMONIC, info.mnemonic),
+        ]);
+      } catch (err) {
+        console.error('Error saving wallet to secure storage:', err);
+        throw err;
+      }
+    },
+    [storeData],
+  );
+
+  // Clear wallet data from secure storage
+  const clearWallet = useCallback(async () => {
+    try {
+      await Promise.all([
+        removeData(STORAGE_KEYS.ADDRESS),
+        removeData(STORAGE_KEYS.PUBLIC_KEY),
+        removeData(STORAGE_KEYS.PRIVATE_KEY),
+        removeData(STORAGE_KEYS.MNEMONIC),
+      ]);
+      setWalletInfo(null);
+      setBalance(0);
+      setTransactions([]);
+    } catch (err) {
+      console.error('Error clearing wallet data:', err);
+      throw err;
+    }
+  }, [removeData]);
 
   // Create new wallet
   const createWallet = useCallback(async () => {
@@ -77,6 +153,7 @@ export const useBitcoin = () => {
         mnemonic,
       };
 
+      await saveWalletToStorage(newWalletInfo);
       setWalletInfo(newWalletInfo);
       return newWalletInfo;
     } catch (err: any) {
@@ -85,45 +162,49 @@ export const useBitcoin = () => {
     } finally {
       setCreatingWallet(false);
     }
-  }, []);
+  }, [saveWalletToStorage]);
 
   // Import wallet from mnemonic
-  const importWallet = useCallback(async (mnemonic: string) => {
-    setImportingWallet(true);
-    setError(null);
+  const importWallet = useCallback(
+    async (mnemonic: string) => {
+      setImportingWallet(true);
+      setError(null);
 
-    try {
-      if (!bip39.validateMnemonic(mnemonic)) {
-        throw new Error('Invalid mnemonic phrase');
+      try {
+        if (!bip39.validateMnemonic(mnemonic)) {
+          throw new Error('Invalid mnemonic phrase');
+        }
+
+        const seed = mnemonicToSeedSync(mnemonic);
+        const root = bip32.fromSeed(seed);
+        const child = root.derivePath(PATH);
+        const pubkeyBuffer = Buffer.from(child.publicKey);
+
+        // Native Segwit
+        const {address} = bitcoin.payments.p2wpkh({
+          pubkey: pubkeyBuffer,
+          network: NETWORK,
+        });
+
+        const importedWalletInfo: WalletInfo = {
+          address: address!,
+          publicKey: pubkeyBuffer.toString('hex'),
+          privateKey: Buffer.from(child.privateKey!).toString('hex'),
+          mnemonic,
+        };
+
+        await saveWalletToStorage(importedWalletInfo);
+        setWalletInfo(importedWalletInfo);
+        return importedWalletInfo;
+      } catch (err: any) {
+        setError(err.message);
+        throw err;
+      } finally {
+        setImportingWallet(false);
       }
-
-      const seed = mnemonicToSeedSync(mnemonic);
-      const root = bip32.fromSeed(seed);
-      const child = root.derivePath(PATH);
-      const pubkeyBuffer = Buffer.from(child.publicKey);
-
-      // Native Segwit
-      const {address} = bitcoin.payments.p2wpkh({
-        pubkey: pubkeyBuffer,
-        network: NETWORK,
-      });
-
-      const importedWalletInfo: WalletInfo = {
-        address: address!,
-        publicKey: pubkeyBuffer.toString('hex'),
-        privateKey: Buffer.from(child.privateKey!).toString('hex'),
-        mnemonic,
-      };
-
-      setWalletInfo(importedWalletInfo);
-      return importedWalletInfo;
-    } catch (err: any) {
-      setError(err.message);
-      throw err;
-    } finally {
-      setImportingWallet(false);
-    }
-  }, []);
+    },
+    [saveWalletToStorage],
+  );
 
   // Get wallet balance
   const getBalance = useCallback(
@@ -354,11 +435,13 @@ export const useBitcoin = () => {
     sendingBitcoin,
     gettingBalance,
     gettingTransactions,
+    loadingWallet,
     error,
     createWallet,
     importWallet,
     getBalance,
     getTransactions,
     sendBitcoin,
+    clearWallet,
   };
 };

@@ -25,12 +25,14 @@ const MainScreen = () => {
     sendingBitcoin,
     gettingBalance,
     gettingTransactions,
+    loadingWallet,
     error,
     createWallet,
     importWallet,
     getBalance,
     getTransactions,
     sendBitcoin,
+    clearWallet,
   } = useBitcoin();
 
   const [recipientAddress, setRecipientAddress] = useState('');
@@ -51,6 +53,17 @@ const MainScreen = () => {
       loadData();
     }
   }, [walletInfo?.address, getBalance, getTransactions]);
+
+  if (loadingWallet) {
+    return (
+      <GradientBackground>
+        <SafeAreaView style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={styles.loadingText}>Loading wallet...</Text>
+        </SafeAreaView>
+      </GradientBackground>
+    );
+  }
 
   // Handle wallet creation
   const handleCreateWallet = async () => {
@@ -216,6 +229,22 @@ const MainScreen = () => {
                 ) : (
                   <Text style={styles.balance}>{balance.toFixed(8)} tBTC</Text>
                 )}
+
+                <Button
+                  title="Clear Wallet"
+                  onPress={async () => {
+                    try {
+                      await clearWallet();
+                      Alert.alert(
+                        'Success',
+                        'Wallet data cleared successfully',
+                      );
+                    } catch (err: any) {
+                      Alert.alert('Error', err.message);
+                    }
+                  }}
+                  variant="secondary"
+                />
               </View>
 
               <View style={styles.sendSection}>
@@ -374,6 +403,16 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#fff',
   },
 });
 
